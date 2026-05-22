@@ -7,47 +7,49 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
 from xgboost import XGBClassifier
+from pathlib import Path
 
-# =========================
-# 1. Load dataset
-# =========================
-df = pd.read_csv(r"C:\Users\latit\.local\online_shoppers_intention.csv")
+# Chargez vos données de manière robuste depuis le dossier racine du projet
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_PATH = BASE_DIR / 'data' / 'online_shoppers_intention.csv'
+df = pd.read_csv(DATA_PATH)
 
-# =========================
-# 2. Basic preprocessing
-# =========================
-
-# Target variable: Revenue (True/False -> 1/0)
+# Target encoding
 df["Revenue"] = df["Revenue"].astype(int)
 
-# Encode categorical variables
+# =========================
+# 2. ENCODE CATEGORICAL FEATURES
+# =========================
 categorical_cols = ["Month", "VisitorType"]
 
-le_dict = {}
 for col in categorical_cols:
-    le = LabelEncoder()
-    df[col] = le.fit_transform(df[col])
-    le_dict[col] = le
+    df[col] = LabelEncoder().fit_transform(df[col])
 
 # =========================
-# 3. Features / target split
+# 3. SPLIT FEATURES / TARGET
 # =========================
 X = df.drop("Revenue", axis=1)
 y = df["Revenue"]
 
-# =========================
-# 4. Train-test split
-# IMPORTANT: stratify for imbalance
-# =========================
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y,
+    X,
+    y,
     test_size=0.2,
     random_state=42,
     stratify=y
 )
 
 # =========================
-# 5. XGBoost model
+# 4. HANDLE CLASS IMBALANCE
+# =========================
+neg = (y_train == 0).sum()
+pos = (y_train == 1).sum()
+
+scale_pos_weight = neg / pos
+print("scale_pos_weight =", scale_pos_weight)
+
+# =========================
+# 5. XGBOOST MODEL (WITH CORRECTION)
 # =========================
 model = XGBClassifier(
     n_estimators=300,
@@ -55,23 +57,24 @@ model = XGBClassifier(
     learning_rate=0.05,
     subsample=0.8,
     colsample_bytree=0.8,
+    scale_pos_weight=scale_pos_weight,
     eval_metric="logloss",
     random_state=42
 )
 
 # =========================
-# 6. Train
+# 6. TRAIN MODEL
 # =========================
 model.fit(X_train, y_train)
 
 # =========================
-# 7. Predictions
+# 7. PREDICTIONS
 # =========================
 y_pred = model.predict(X_test)
 y_prob = model.predict_proba(X_test)[:, 1]
 
 # =========================
-# 8. Evaluation
+# 8. EVALUATION
 # =========================
 print("\n=== Classification Report ===")
 print(classification_report(y_test, y_pred))
@@ -81,4 +84,3 @@ print(confusion_matrix(y_test, y_pred))
 
 print("\n=== ROC-AUC ===")
 print(roc_auc_score(y_test, y_prob))
-
